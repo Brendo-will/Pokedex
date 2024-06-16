@@ -50,11 +50,11 @@ Este é um aplicativo de Pokédex simples criado com Python e PyQt5, que permite
 
 ## Estrutura do Projeto
 
-pokedex-por-tipo/
+Pokedex/
 │
-├── pokedex.py # Código principal do aplicativo
-├── requirements.txt # Lista de dependências do projeto
-├── README.md # Este arquivo
+├── pokedex.py 
+├── requirements.txt 
+├── README.md
 
 
 
