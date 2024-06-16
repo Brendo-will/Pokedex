@@ -55,7 +55,7 @@ pokedex-por-tipo/
 ├── pokedex.py # Código principal do aplicativo
 ├── requirements.txt # Lista de dependências do projeto
 ├── README.md # Este arquivo
-└── screenshot.png # Captura de tela do aplicativo (se aplicável)
+
 
 
 ## Agradecimentos
