@@ -1,17 +1,21 @@
 import sys
 import requests
-import threading
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QLabel
-from PyQt5.QtGui import QPixmap
-from PyQt5.QtCore import Qt
 from concurrent.futures import ThreadPoolExecutor
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QLabel, QGridLayout
+from PyQt5.QtGui import QPixmap, QPainter
+from PyQt5.QtCore import Qt
+from functools import lru_cache
 
+session = requests.Session()
+
+@lru_cache(maxsize=None)
 def get_pokemon_data(pokemon_name):
-    """Fetch Pokemon data from the PokeAPI."""
+    """Buscar dados do Pokémon na PokeAPI."""
     url = f"https://pokeapi.co/api/v2/pokemon/{pokemon_name.lower()}"
-    response = requests.get(url)
+    response = session.get(url)
     if response.status_code == 200:
         data = response.json()
+        species_url = data['species']['url']
         return {
             'name': data['name'],
             'abilities': [ability['ability']['name'] for ability in data['abilities']],
@@ -19,22 +23,31 @@ def get_pokemon_data(pokemon_name):
             'height': data['height'],
             'weight': data['weight'],
             'stats': {stat['stat']['name']: stat['base_stat'] for stat in data['stats']},
-            'image_url': data['sprites']['front_default']
+            'image_url': data['sprites']['front_default'],
         }
     else:
         return None
 
 def fetch_all_pokemon():
-    """Fetch a list of all Pokémon names and types."""
-    url = "https://pokeapi.co/api/v2/pokemon?limit=150"
-    response = requests.get(url)
+    """Buscar uma lista de todos os nomes e tipos de Pokémon."""
+    url = "https://pokeapi.co/api/v2/pokemon?limit=1000"
+    response = session.get(url)
     pokemon_list = []
     if response.status_code == 200:
         all_pokemon = response.json()['results']
-        with ThreadPoolExecutor(max_workers=10) as executor:
+        with ThreadPoolExecutor(max_workers=20) as executor:
             results = executor.map(lambda p: get_pokemon_data(p['name']), all_pokemon)
             pokemon_list = [result for result in results if result]
     return pokemon_list
+
+class PokedexWidget(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.background = QPixmap("/mnt/data/image.png")
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.drawPixmap(self.rect(), self.background)
 
 class PokemonApp(QWidget):
     def __init__(self, pokemon_list):
@@ -44,12 +57,15 @@ class PokemonApp(QWidget):
         self.initUI()
 
     def initUI(self):
+        self.setFixedSize(400, 600)
         main_layout = QVBoxLayout()
-        top_layout = QHBoxLayout()
-        bottom_layout = QVBoxLayout()
+        self.pokedex_widget = PokedexWidget(self)
+        
+        inner_layout = QGridLayout()
+        inner_layout.setContentsMargins(45, 100, 45, 150)
 
         self.typeCombo = QComboBox()
-        self.typeCombo.addItem("All Types")
+        self.typeCombo.addItem("Todos os Tipos")
         self.typeCombo.addItems(sorted(set(type for p in self.pokemon_list for type in p['types'])))
         self.typeCombo.currentIndexChanged.connect(self.filter_by_type)
 
@@ -58,20 +74,20 @@ class PokemonApp(QWidget):
 
         self.imageLabel = QLabel(self)
         self.imageLabel.setAlignment(Qt.AlignCenter)
-        self.resultLabel = QLabel("Select a Pokémon to see its details.", self)
+        self.resultLabel = QLabel("Selecione um Pokémon para ver seus detalhes.", self)
         self.resultLabel.setAlignment(Qt.AlignLeft)
+        self.resultLabel.setWordWrap(True)
 
-        top_layout.addWidget(self.typeCombo)
-        top_layout.addWidget(self.pokemonCombo)
-        bottom_layout.addWidget(self.imageLabel)
-        bottom_layout.addWidget(self.resultLabel)
+        inner_layout.addWidget(self.typeCombo, 0, 0, 1, 2)
+        inner_layout.addWidget(self.pokemonCombo, 1, 0, 1, 2)
+        inner_layout.addWidget(self.imageLabel, 2, 0, 1, 2)
+        inner_layout.addWidget(self.resultLabel, 3, 0, 1, 2)
 
-        main_layout.addLayout(top_layout)
-        main_layout.addLayout(bottom_layout)
+        main_layout.addWidget(self.pokedex_widget)
+        self.pokedex_widget.setLayout(inner_layout)
 
         self.setLayout(main_layout)
-        self.setWindowTitle('Pokédex by Type')
-        self.setFixedSize(600, 400) 
+        self.setWindowTitle('Pokédex por Tipo')
         self.show()
 
     def update_pokemon_combo(self):
@@ -81,7 +97,7 @@ class PokemonApp(QWidget):
 
     def filter_by_type(self):
         selected_type = self.typeCombo.currentText()
-        if selected_type == "All Types":
+        if (selected_type == "Todos os Tipos") or (selected_type is None):
             self.filtered_list = self.pokemon_list
         else:
             self.filtered_list = [p for p in self.pokemon_list if selected_type in p['types']]
@@ -96,21 +112,22 @@ class PokemonApp(QWidget):
                 self.imageLabel.setPixmap(pixmap.scaled(100, 100, Qt.KeepAspectRatio))
                 
                 details = [
-                    f"Name: {p['name'].title()}",
-                    f"Abilities: {', '.join(p['abilities'])}",
-                    f"Types: {', '.join(p['types'])}",
-                    f"Height: {p['height']} decimetres",
-                    f"Weight: {p['weight']} hectograms",
-                    "Stats:"
+                    f"Nome: {p['name'].title()}",
+                    f"Habilidades: {', '.join(p['abilities'])}",
+                    f"Tipos: {', '.join(p['types'])}",
+                    f"Altura: {p['height']} decímetros",
+                    f"Peso: {p['weight']} hectogramas",
+                    "Estatísticas:"
                 ]
                 stats = [f"  {stat}: {value:2}" for stat, value in p['stats'].items()]
-                details.extend(stats)
+                details.extend(stats)              
+
                 self.resultLabel.setText("\n".join(details))
                 break
 
 def main():
     app = QApplication(sys.argv)
-    pokemon_list = fetch_all_pokemon()  # Fetch all Pokémon when the app starts
+    pokemon_list = fetch_all_pokemon()  
     ex = PokemonApp(pokemon_list)
     sys.exit(app.exec_())
 
